@@ -1,6 +1,7 @@
 import random
 import sqlite3
 
+
 conn = sqlite3.connect('card.s3db')
 cur = conn.cursor()
 cur.execute('''CREATE TABLE IF NOT EXISTS card(
@@ -10,26 +11,20 @@ cur.execute('''CREATE TABLE IF NOT EXISTS card(
     balance INTEGER DEFAULT 0);
     ''')
 
+def is_luhn_number(card_number):
+    card_int_number = [int(char) for char in str(card_number)]
+    for i, num in enumerate(card_int_number):
+        if (i + 1) % 2 != 0:
+            tmp = num * 2
+            card_int_number[i] = tmp if tmp <= 9 else tmp - 9 
+    return sum(card_int_number) % 10 == 0
+
 
 def luhn(card_number):
-    account_identifier = ""
-    for i in range(6, 15):
-        account_identifier += card_number[i]
-    seeder = card_number[15]
-    first_number = int(card_number[0])
-    temp = 0
-    luhn_number = [0, 0, 0, 0, 0, 0, 0, 0, 0]
-    for i in range(len(account_identifier)):
-        if i % 2 == 0:
-            luhn_number[i] = int(account_identifier[i]) * 2
-            if int(account_identifier[i]) * 2 > 9:
-                luhn_number[i] = luhn_number[i] - 9
-        else:
-            luhn_number[i] = int(account_identifier[i])
-    for k in luhn_number:
-        temp += int(k)
-    if (temp + first_number * 2 + int(seeder)) % 10 == 0:
-        return True
+    if card_number[0:6] != "400000" or len(card_number) != 16:
+        return None
+    else:
+        return is_luhn_number(card_number)
 
 
 class Menu:
@@ -38,9 +33,9 @@ class Menu:
         self.pin = pin
 
     def balance(self):
-        print()
-        print(cur.execute('SELECT balance FROM card WHERE number = ?', self.card_number))
-        print()
+        cur.execute('SELECT balance FROM card WHERE number = ?', (self.card_number,))
+        current_balance, _ = cur.fetchone()
+        print(current_balance)
         Menu.app(self)
 
     def app(self):
@@ -56,11 +51,10 @@ class Menu:
             Menu.app(self)
         elif app_input == 3:
             print('Transfer')
-            card_target = str(input('Enter card number:\n'))
+            card_target = str(input('Enter card number:\n').strip())
             cur.execute('SELECT number FROM card WHERE number = (?)', (card_target,))
             status = cur.fetchone()
             luhn_result = luhn(card_target)
-
             if card_target == self.card_number:
                 print('You can"t transfer money to the same account!')
             elif luhn_result is None:
@@ -100,7 +94,7 @@ class Menu:
 
 
 def log_in():
-    card_input = str(input('Enter your card number:'))
+    card_input = str(input('Enter your card number:').strip())
     pin_input = str(input('Enter your PIN:'))
     cur.execute('''SELECT number, pin FROM card WHERE
         number =  ?
@@ -118,7 +112,7 @@ def log_in():
         app_start.app()
 
 
-def create_acc():  # Don't  change or the program will don't work!
+def create_acc():
     account_identifier = str(random.randint(000000000, 999999999))
     seeder = str(random.randint(0, 9))
     account_identifier = '0' * (9 - len(account_identifier)) + account_identifier

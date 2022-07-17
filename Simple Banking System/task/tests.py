@@ -1,5 +1,6 @@
 from hstest.test_case import CheckResult
-from hstest.stage_test import StageTest, WrongAnswerException
+from hstest.stage_test import StageTest
+from hstest.exceptions import WrongAnswerException
 from hstest.test_case import TestCase
 from shutil import copy2
 import sqlite3
