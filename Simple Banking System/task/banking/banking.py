@@ -1,7 +1,6 @@
 import random
 import sqlite3
 
-
 conn = sqlite3.connect('card.s3db')  # Creating a connection to card.s3db
 cur = conn.cursor()  # Set cursor to current connection
 cur.execute('''CREATE TABLE IF NOT EXISTS card(
@@ -9,30 +8,29 @@ cur.execute('''CREATE TABLE IF NOT EXISTS card(
     number TEXT,
     pin TEXT,
     balance INTEGER DEFAULT 0);
-    ''')  # If the database table doesn't exist,  
-          # create a new table with (id,number,pin,balance) header
-          
+    ''')  # If the database table doesn't exist, create a new table with (id,number,pin,balance) header
+
 
 def is_luhn_number(card_number):
-    '''Check if the card number passed Luhn's algorithm. 
-       Return true if the number passed the test, otherwise return false.
-       More info of Luhn algorithm is available in 
-       ./Simple Banking System/Luhn algorithm/task.html'''
+    # Check if the card number passed Luhn's algorithm.
+    # Return true if the number passed the test, otherwise return false.
+    # More info of Luhn algorithm is available in
+    # ./Simple Banking System/Luhn algorithm/task.html
     card_int_number = [int(char) for char in str(card_number)]
     for i, num in enumerate(card_int_number):
         if (i + 1) % 2 != 0:
             tmp = num * 2
-            card_int_number[i] = tmp if tmp <= 9 else tmp - 9 
+            card_int_number[i] = tmp if tmp <= 9 else tmp - 9
     return sum(card_int_number) % 10 == 0
 
 
 def check_card(card_number):
-    '''Check if the card IIN number is 400000 and the card numbers have
-       maximum length of 16. The IIN number and card numbers length are
-       specified only for this program'''
-    return(card_number[0:6] == "400000" 
-        and len(card_number) == 16
-        and is_luhn_number(card_number))
+    # Check if the card IIN number is 400000 and the card numbers have
+    # maximum length of 16. The IIN number and card numbers length are
+    # specified only for this program
+    return (card_number[0:6] == "400000"
+            and len(card_number) == 16
+            and is_luhn_number(card_number))
 
 
 def add_balance(card_number, added_amount):
@@ -43,7 +41,7 @@ def add_balance(card_number, added_amount):
 
 def balance(card_number):
     cur.execute('SELECT balance FROM card WHERE number = ?', (card_number,))
-    current_balance, _ = cur.fetchone()
+    current_balance, = cur.fetchone()
     return current_balance
 
 
@@ -51,7 +49,7 @@ class Menu:
     def __init__(self, card_number, pin):
         self.card_number = card_number
         self.pin = pin
-    
+
     def app(self):
         print('1. Balance\n2. Add income\n3. Do transfer\n4. Close account\n5. Logout\n0. Exit')
         app_input = int(input())
@@ -90,7 +88,7 @@ class Menu:
                     self.app()
         elif app_input == 4:
             cur.execute('DELETE FROM card WHERE number = (?)',
-                (self.card_number,))
+                        (self.card_number,))
             conn.commit()
             print('The account has been closed!')
         elif app_input == 5:
