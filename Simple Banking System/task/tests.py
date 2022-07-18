@@ -1,6 +1,5 @@
 from hstest.test_case import CheckResult
-from hstest.stage_test import StageTest
-from hstest.exceptions import WrongAnswerException
+from hstest.stage_test import StageTest, WrongAnswer
 from hstest.test_case import TestCase
 from shutil import copy2
 import sqlite3
@@ -18,16 +17,22 @@ temp_db_file_name = 'temp.s3db'
 
 
 def get_credentials(output: str, count=0):
-    number = re.findall(r'400000\d{10}', output, re.MULTILINE)
+    number = re.findall(r'^400000\d{10}$', output, re.MULTILINE)
     if not number:
-        raise WrongAnswerException('You are printing the card number incorrectly. '
-                                   'The card number should look like in the example: 400000DDDDDDDDDD, where D is a digit.')
+        raise WrongAnswer('You are printing the card number incorrectly. '
+                                   'The card number should look like in the example: 400000DDDDDDDDDD,'
+                                   ' where D is a digit.\nMake sure the card number is 16-digit length and '
+                                   'you don\'t print any extra spaces at the end of the line!')
 
     PIN = re.findall(r'^\d{4}$', output, re.MULTILINE)
     if not PIN:
-        raise WrongAnswerException('You are printing the card PIN incorrectly. '
-                                   'The PIN should look like in the example: DDDD, where D is a digit.')
+        raise WrongAnswer('You are printing the card PIN incorrectly. '
+                                   'The PIN should look like in the example: DDDD, where D is a digit.\n'
+                                   'Make sure the PIN is 4-digit length and you don\'t print any extra spaces at the'
+                                   ' end of the line!')
     if count == 2:
+        if len(number) == 1 or len(PIN) == 1:
+            raise WrongAnswer(f'Expected 2 generated card credentials, but found {len(number)}')
         return (number[0], PIN[0]), (number[1], PIN[1])
     else:
         return number[0], PIN[0]
@@ -81,7 +86,7 @@ def test_output_after_wrong_pin(output: str, value_to_return):
     are_all_inputs_read = True
     if 'wrong' not in output.lower():
         return CheckResult.wrong(
-            'There is no \'wrong\' in your output after signing in with correct credentials')
+            'There is no \'wrong\' in your output after signing in with incorrect credentials')
     return value_to_return
 
 
@@ -101,7 +106,7 @@ def test_output_after_wrong_card_number(output: str, value_to_return):
     are_all_inputs_read = True
     if 'wrong' not in output.lower():
         return CheckResult.wrong(
-            'There is no \'wrong\' in your output after signing in with correct credentials')
+            'There is no \'wrong\' in your output after signing in with incorrect credentials')
     return value_to_return
 
 
@@ -115,14 +120,21 @@ def is_passed_luhn_algorithm(number):
     return sum(luhn) % 10 == 0
 
 
-def test_luhn_algorithm(output: str, value_to_return):
+def test_luhn_algorithm(output: str, correct_num_of_cards):
     global are_all_inputs_read
 
-    numbers = re.findall(r'400000\d{10}', output, re.MULTILINE)
+    numbers = re.findall(r'400000\d{10,}', output, re.MULTILINE)
 
     for number in numbers:
+        if len(number) != 16:
+            return CheckResult.wrong(f'Wrong card number \'{number}\'. The card number should be 16-digit length.')
         if not is_passed_luhn_algorithm(number):
             return CheckResult.wrong('The card number \'{}\' doesn\'t pass luhn algorithm!'.format(number))
+
+    if len(numbers) != correct_num_of_cards:
+        return CheckResult.wrong(
+            f'After creating {correct_num_of_cards} cards, found {len(numbers)} cards with correct format\n'
+            f'The card number should be 16-digit length and should start with 400000.')
 
     are_all_inputs_read = True
     return '0'
@@ -160,8 +172,9 @@ def check_db(output: str, value_to_return):
                     if correct_column[0] in real_column and correct_column[1] in real_column:
                         break
                 else:
-                    return CheckResult.wrong('Your table should have columns described in the stage instructions.\n'
-                                             'Make sure you use INTEGER type not INT.')
+                    return CheckResult.wrong(
+                        f'Can\'t find column named \'{correct_column[0].lower()}\' with \'{correct_column[1]}\' type.\n'
+                        'Your table should have columns described in the stage instructions.')
     except Exception:
         return CheckResult.wrong('Can\'t connect to the database!')
 
@@ -169,11 +182,25 @@ def check_db(output: str, value_to_return):
 
 
 def check_db_rows(output: str, value_to_return):
-    numbers = re.findall(r'400000\d{10}', output, re.MULTILINE)
+    correct_num_of_cards = 10
+    numbers = re.findall(r'400000\d{10,}', output, re.MULTILINE)
+
+    for number in numbers:
+        if len(number) != 16:
+            return CheckResult.wrong(f'Wrong card number \'{number}\'. The card number should be 16-digit length.')
+        if not is_passed_luhn_algorithm(number):
+            return CheckResult.wrong('The card number \'{}\' doesn\'t pass luhn algorithm!'.format(number))
+
+    if len(numbers) != correct_num_of_cards:
+        return CheckResult.wrong(
+            f'After creating {correct_num_of_cards} cards, found {len(numbers)} cards with correct format\n'
+            f'The card number should be 16-digit length and should start with 400000.')
 
     with sqlite3.connect(db_file_name) as db:
         rows = db.execute('SELECT * FROM card').fetchall()
         for number in numbers:
+            if len(number) != 16:
+                return CheckResult.wrong(f'Wrong card number \'{number}\'. The card number should be 16-digit length.')
             is_found = False
             for row in rows:
                 if number in row:
@@ -198,6 +225,9 @@ def test_second_add_income(output: str, value_to_return):
     expected_balance = 10000
     with sqlite3.connect(db_file_name) as db:
         result = db.execute('SELECT * FROM card WHERE number = {}'.format(card_number)).fetchone()
+        if not result:
+            return CheckResult.wrong(f'Can\' find card number \'{card_number}\' in the database!\n'
+                                     f'Make sure you commit your DB changes right after saving a new card in the database!')
         balance = result[3]
         if balance != expected_balance:
             return CheckResult.wrong(
@@ -210,6 +240,9 @@ def test_balance_after_second_income(output: str, value_to_return):
     expected_balance = 25000
     with sqlite3.connect(db_file_name) as db:
         result = db.execute('SELECT * FROM card WHERE number = {}'.format(card_number)).fetchone()
+        if not result:
+            return CheckResult.wrong(f'Can\' find card number \'{card_number}\' in the database!\n'
+                                     f'Make sure you commit your DB changes right after saving a new card in the database!')
         balance = result[3]
         if balance != expected_balance:
             return CheckResult.wrong(
@@ -233,7 +266,7 @@ def test_transfer_doesnt_pass_luhn(output: str, value_to_return):
         return CheckResult.wrong('You should not allow to transfer to a card number that doesn\'t pass '
                                  'the Luhn algorithm.\n Instead output \'{}\''.format(
             'Probably you made mistake in card number. Please try again!'))
-    doesnt_exist_card = 3000003972196503
+    doesnt_exist_card = 4000003972196501
     return '3\n{}'.format(doesnt_exist_card)
 
 
@@ -257,7 +290,13 @@ def test_balance_after_transfer(output: str, value_to_return):
     global card_number, second_card_number, are_all_inputs_read
     with sqlite3.connect(db_file_name) as db:
         first = db.execute('SELECT * FROM card WHERE number = {}'.format(card_number)).fetchone()
+        if not first:
+            return CheckResult.wrong(f'Can\' find card number \'{first}\' in the database!\n'
+                                     f'Make sure you commit your DB changes right after saving a new card in the database!')
         second = db.execute('SELECT * FROM card WHERE number = {}'.format(second_card_number)).fetchone()
+        if not second:
+            return CheckResult.wrong(f'Can\' find card number \'{second}\' in the database!\n'
+                                     f'Make sure you commit your DB changes right after saving a new card in the database!')
         first_balance = first[3]
         second_balance = second[3]
         if first_balance != 10000:
@@ -279,7 +318,10 @@ def test_closing_account(output: str, value_to_return):
 def test_rows_after_closing_account(output: str, value_to_return):
     global card_number, are_all_inputs_read
     with sqlite3.connect(db_file_name) as db:
-        rows = db.execute('SELECT * FROM card WHERE number = \'{}\''.format(card_number)).fetchall()
+        try:
+            rows = db.execute('SELECT * FROM card WHERE number = \'{}\''.format(card_number)).fetchall()
+        except:
+            return CheckResult.wrong("Can't select data from 'card' table!")
         if rows:
             return CheckResult.wrong('After closing an account, the card number should be deleted from the database.')
     are_all_inputs_read = True
@@ -299,6 +341,11 @@ class BankingSystem(StageTest):
                     '1',
                     lambda output: test_card_generation(output, '1'),
                     lambda output: test_difference_between_generations(output, '0')
+                ]),
+            TestCase(
+                stdin=[
+                    '1\n1\n1\n1\n1\n1\n1\n1',
+                    lambda output: test_luhn_algorithm(output, 8),
                 ]),
             TestCase(
                 stdin='1\n1\n1\n1\n1\n1\n1\n1\n1\n1\n0',
@@ -324,11 +371,6 @@ class BankingSystem(StageTest):
                     lambda output: test_card_generation(output, '2'),
                     lambda output: test_sign_in_with_wrong_card_number(output, None),
                     lambda output: test_output_after_wrong_card_number(output, '0')
-                ]),
-            TestCase(
-                stdin=[
-                    '1\n1\n1\n1\n1\n1\n1\n1',
-                    lambda output: test_luhn_algorithm(output, '0'),
                 ]),
             TestCase(
                 stdin=[

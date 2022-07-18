@@ -22,7 +22,7 @@ def is_luhn_number(card_number):
 
 def luhn(card_number):
     if card_number[0:6] != "400000" or len(card_number) != 16:
-        return None
+        return False
     else:
         return is_luhn_number(card_number)
 
@@ -57,7 +57,7 @@ class Menu:
             luhn_result = luhn(card_target)
             if card_target == self.card_number:
                 print('You can"t transfer money to the same account!')
-            elif luhn_result is None:
+            elif luhn_result is False:
                 print("Probably you made mistake in the card number. Please try again!")
                 print()
                 Menu.app(self)

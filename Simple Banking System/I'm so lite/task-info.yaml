@@ -252,7 +252,7 @@ files:
 - name: card.s3db
   visible: true
   learner_created: true
-feedback_link: https://hyperskill.org/projects/109/stages/593/implement
+feedback_link: https://hyperskill.org/learn/step/9829#comment
 status: Solved
 feedback:
   message: Congratulations! Continue on <a href="https://hyperskill.org/projects/109/stages/593/implement">JetBrains
